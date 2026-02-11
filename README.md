@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Agentic AI Research Engine
+
+An autonomous research assistant that bridges the gap between LLM knowledge cutoffs and real-time data using **Gemini 2.5 Flash** and the **Tavily Search API**.
+
+![Next.js](https://img.shields.io/badge/Next.js-000?style=for-the-badge&logo=next.js&logoColor=white)
+![Vercel AI SDK](https://img.shields.io/badge/Vercel_AI_SDK-000?style=for-the-badge&logo=vercel&logoColor=white)
+![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?style=for-the-badge&logo=google&logoColor=white)
+
+##  Overview
+Unlike standard chatbots, this engine functions as an **Autonomous Agent**. It doesn't just "chat"; it performs **multi-step reasoning** to identify when its internal knowledge is insufficient, triggers a real-time web search, and synthesizes the findings into a cited research report.
+
+##  Key Features
+- **Agentic Workflows**: Utilizes `maxSteps` to allow the AI to "think," "search," and "summarize" in a single request.
+- **Real-Time Web Access**: Integrated with **Tavily AI** for high-precision, LLM-optimized search results.
+- **Streaming UI**: Leverages Vercel AI SDK's `useChat` for instant token-by-token streaming.
+- **Source Citations**: Automatically generates markdown links for every fact retrieved from the web.
+
+## Architecture
+The system follows a **ReAct (Reason + Act)** pattern:
+
+1. **User Prompt**: "What is the latest price of iPhone 17?"
+2. **Decision Layer**: Gemini detects a need for real-time data.
+3. **Tool Execution**: Agent calls `researchEngine` tool (Tavily API).
+4. **Synthesis**: Agent receives search snippets and summaries them based on the system prompt.
+5. **Final Output**: A structured report with tables and clickable citations.
+
+##  Tech Stack
+- **Framework**: Next.js 15 (App Router)
+- **AI Orchestration**: Vercel AI SDK (Core, UI, & Stream)
+- **Language Models**: Google Gemini 2.0 Flash / Groq Llama 3.3
+- **Search Engine**: Tavily Search API
+- **Styling**: Tailwind CSS & Shadcn/UI
 
 ## Getting Started
 
-First, run the development server:
+### Setup Instructions
+1. **Clone the Repo**:
+   ```bash
+   git clone <repo url>
 
+2. **Environment Variables: Create a .env.local file**:
+   ```bash      
+   TAVILY_API_KEY=your_key_here
+   GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
+  
+
+## Install & Run:
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
