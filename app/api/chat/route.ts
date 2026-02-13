@@ -1,16 +1,18 @@
 import { getServerSession } from "next-auth";
 import { handleAuthOption } from "@/lib/auth";
 import { google } from '@ai-sdk/google';
-import { streamText, tool, convertToModelMessages, UIMessage} from 'ai';
+import { streamText, tool, convertToModelMessages, stepCountIs,} from 'ai';
 import { NextRequest} from "next/server";
-import {  z } from 'zod';
+import { z } from 'zod';
 
+interface maxSteps{
+    maxSteps: number
+}
 
 
 
 export const POST = async(req: NextRequest) => {
    const session = await getServerSession(handleAuthOption);
-   console.log("the sesssion is ", session)
    if(!session?.user.id){
       return Response.json({
          message: "You are not logged In",
@@ -20,15 +22,34 @@ export const POST = async(req: NextRequest) => {
           status: 403
        })
     }
-   const {messages} : {messages: UIMessage[]} = await req.json();
+   const {messages} : {messages: any} = await req.json();
    console.log("the messages is ", messages);
    
-   const model = google('gemini-2.5-flash')
+   const model = google('gemini-2.5-flash');
+
+   const prompt = `You are an expert Research AI Agent. Your goal is to provide deep, fact-based insights by effectively using the tools provided.
+        ### OPERATIONAL RULES:
+        1. **Always Verify**: If a user asks for facts, prices, or current events, use the 'researchEngine' tool immediately. Do not rely on your internal training data for post-2024 information.
+        2. **Step-by-Step Synthesis**: 
+        - First, analyze the search results. 
+        - Second, extract the most relevant data.
+        - Third, synthesize a coherent answer that addresses the user's specific intent.
+
+        ### FORMATTING GUIDELINES:
+        - **Citations**: Every claim must be cited. Use markdown links: [Source Title](URL). 
+        - **Data Visualization**: Use Markdown Tables for comparing prices, specs, or dates. 
+        - **Structure**: Use Bold headers for different sections of the research.
+        - **Clarity**: If search results are conflicting (e.g., different prices on different sites), highlight this discrepancy to the user.
+
+        ### TONE:
+        Professional, objective, and analytical. Avoid conversational fluff like "I found this for you." Start directly with the findings.`
    try {
        const result = streamText({
            model,
+           system: prompt,
+           stopWhen: stepCountIs(5),
            messages: await convertToModelMessages(messages),
-           
+           maxRetries: 3,
            tools: {
                researchEngine: tool({
                    description: "Use this tool when you need to research or look up information that you don't have in your knowledge base",
@@ -37,24 +58,34 @@ export const POST = async(req: NextRequest) => {
                        max_results : z.number().describe("Maximum number of results"),
                     }),
                    execute: async ({query, max_results = 5}) => {
-                       console.log('Calling Tavily with:', query);
+                       try {
+                             // calling the tavily for searching
+                            const searchResult = await callingTavily(query, max_results);
+                            return searchResult.map((result: any) => ({
+                                title: result.title,
+                                snippet: result.content,
+                                source: result.url
 
-                       // calling the tavily for searching
-                       const searchResult = await callingTavily(query, max_results);
+                            }))
+                       } catch (error) {
+                           console.error('Tavily error:', error);
+                           // Return error info so AI can inform user
+                           return [{
+                               title: "Search Error",
+                               snippet: "Unable to fetch results. Please try again.",
+                               source: ""
+                           }];
+                       }
 
-                        console.log('Got', searchResult.length, 'results');
-
-                       return {
-                           results: searchResult
-                       };
-                   }
+                    }
+                   
                }),
-           },
+            },
             
            
-       })
-         console.log("the resulrr is ", result)
-        return result.toTextStreamResponse()
+        })
+     return  result.toTextStreamResponse()
+        
    } catch (error) {
        return Response.json({
            message: "Error processing request",
@@ -84,15 +115,11 @@ async function callingTavily(query: string, max_results: number) {
             max_results: max_results
         })
     })
-    if(response){
-        const data =  await response.json()
-        console.log("the data is", data);
-        return data.results.slice(0, max_results).map((r: any) => ({
-            title: r.title,
-            snippet: r.content,
-            url: r.url
-        }))  
-         
+    if (!response.ok) {
+        throw new Error(`Tavily API error: ${response.status}`);
     }
-    throw new Error("Function not implemented.");
+    const data = await response.json();
+
+    return data.results;
+  
 }
