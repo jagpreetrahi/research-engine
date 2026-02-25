@@ -4,11 +4,6 @@ import { google } from '@ai-sdk/google';
 import { streamText, tool, pruneMessages, stepCountIs, type UIMessage, convertToModelMessages} from 'ai';
 import { NextRequest} from "next/server";
 import { z } from 'zod';
-// import { readChat, saveChat } from '@util/chat-store';
-
-// interface maxSteps{
-//     maxSteps: number
-// }
 
 interface TavilyResult{
     title: string,
@@ -26,62 +21,62 @@ export const POST = async(req: NextRequest) => {
           status: 403
        })
     }
-    // // add session validation 
-    // const iSValidSession  = await validateSession(session);
-    // if(!iSValidSession){
-    //     return Response.json({message: "Session expired"}, {status: 401})
-    // }
-   const {messages, id} : {messages: UIMessage[], id: string} = await req.json();
-   
-   // pruning the message to save the token 
-   // create a new array every request then process entire converstation history
-   const pruneMessage = pruneMessages({
-      messages :  await convertToModelMessages(messages),
-      reasoning: 'before-last-message', // remove the reasoning from last message,
-      toolCalls: 'before-last-message',  // remove the tool call 
-      emptyMessages: 'remove'
-   })
-   
+    
+   const {messages} : {messages: UIMessage[]} = await req.json();
+   const modalMessages = await convertToModelMessages(messages)
    const model = google('gemini-2.5-flash');
+    const prompt =`You are a Research AI Agent.
 
-//    const chat = readChat(id);
-//    saveChat({ id, messages, activeStreamId: null });
+        DECISION RULE — silently classify before every response:
+        - NEEDS researchEngine: current events, prices, weather, sports stats, 
+        match results, standings, any data after 2024, anything that changes over time
+        - NO researchEngine: math, code, stable concepts, geography facts, 
+        definitions, things that never change
 
-   const prompt = `You are an expert Research AI Agent. Your goal is to provide deep, fact-based insights by effectively using the tools provided.
-        ### OPERATIONAL RULES:
-        1. **Always Verify**: If a user asks for the new kind of data then use the 'researchEngine' tool immediately. Do not rely on your internal training data for post-2024 information.
-        2. **Step-by-Step Synthesis**: 
-        - First, analyze the search results. 
-        - Second, extract the most relevant data.
-        - Third, synthesize a coherent answer that addresses the user's specific intent.
+        MANDATORY WORKFLOW when researchEngine is needed:
+        Step 1 → call researchEngine
+        Step 2 → ALWAYS call factChecker after researchEngine, no exceptions
+        Step 3 → write final response only after factChecker confirms isSufficient: true
 
-        ### FORMATTING GUIDELINES:
-        - **Citations**: Every claim must be cited. Use markdown links: [Source Title](URL). 
-        - **Data Visualization**: Use Markdown Tables for comparing prices, specs, or dates. 
-        - **Structure**: Use Bold headers for different sections of the research.
-        - **Clarity**: If search results are conflicting (e.g., different prices on different sites), highlight this discrepancy to the user.
-
-        ### TONE:
-        Professional, objective, and analytical. Avoid conversational fluff like "I found this for you." Start directly with the findings.`
+        CITATION RULE:
+        Every factual claim must be cited using the source field from researchEngine results.
+        Format: [Title](URL)
+        Never write a factual sentence without a citation.
+        Never use a result with an empty source field.
+    `
+    let researchHasRun = false;
     try {
        const result = streamText({
            model,
            system: prompt,
            stopWhen: stepCountIs(5),
-           messages: pruneMessage,
+           messages: modalMessages,
            maxRetries: 3,
            tools: {
                researchEngine: tool({
-                   description: "Use this tool when you need to research or look up information that you don't have in your knowledge base",
+                   description: `Search the web for current data. 
+                        IMPORTANT: After receiving results, you MUST call factChecker 
+                        before writing your final response.
+                    `,
                    inputSchema: z.object({
-                       query: z.string().describe("The research query or question to investigate"),
-                       max_results : z.number().describe("Maximum number of results"),
+                       query: z.string(),
+                       max_results : z.number().default(5).describe("Maximum number of results"),
                     }),
-                   execute: async ({query, max_results = 5}) => {
+                   execute: async ({query, max_results}) => {
                        try {
-                             // calling the tavily for searching
-                             console.log("the query is ", query)
+                            console.log("inside the research engine tool")
+                            researchHasRun = true
+                            console.log(researchHasRun);
+                            // calling the tavily for searching
                             const searchResult = await callingTavily(query, max_results);
+                            if(!searchResult){
+                                return [{
+                                    title: "Search is Unavailable",
+                                    snippet: "Unable to fetch results. Please try again",
+                                    source: ""
+                                }]
+                            }
+                            
                             return searchResult.map((result: TavilyResult) => ({
                                 title: result.title,
                                 snippet: result.content,
@@ -92,23 +87,45 @@ export const POST = async(req: NextRequest) => {
                            console.error('Tavily error:', error);
                            // Return error info so AI can inform user
                            return [{
-                               title: "Search Error",
-                               snippet: "Unable to fetch results. Please try again.",
+                               title: "Internal Error",
+                               snippet: "Something went wrong, please try later",
                                source: ""
                            }];
                        }
 
                     }
-                   
-               }),
-            },
+                }),
+                factChecker: tool({
+                    description: `ALWAYS call this after researchEngine before responding.
+                       Evaluates if gathered research is sufficient and accurate.
+                     `,
+                    inputSchema: z.object({
+                        findings: z.string().describe("The information gathered so far"),
+                        query: z.string().describe("the original user intent")
+
+                    }),
+                    execute: async ({findings, query}) => {
+                        console.log("inside the fact checker tool ")
+                        console.log(researchHasRun)
+                            if(!researchHasRun) {
+                                return  {
+                                    isSufficient: false,
+                                    suggestion: "Call researchEngine first."
+                                }
+                            }
+                            return {
+                                isSufficient: true,
+                                evaluation: findings.length > 100
+                                    ? "Data is sufficient. Proceed to write the analysis."
+                                    : "Data seems thin. Consider calling researchEngine again with a refined query."
+                            }
+                        }
+                   })
+               },
             
-            
-           
-        })
-     return  result.toUIMessageStreamResponse()
-        
-   } catch (error) {
+            })
+        return  result.toUIMessageStreamResponse()
+    } catch (error) {
        return Response.json({
            message: "Error processing request",
            success: false,

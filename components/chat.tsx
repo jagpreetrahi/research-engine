@@ -3,11 +3,11 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, } from 'ai';
 import { useState } from 'react';
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
-
+import { PromptDesign } from './ui/prompt-input';
 
 
 export default function Chat() {
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status} = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat/',
     }),
@@ -92,7 +92,7 @@ export default function Chat() {
                                         <ToolInput input={part.input} />
                                          <ToolOutput
                                             errorText={part.errorText}
-                                            output={part.output}
+                                            output={JSON.stringify(part.output, null ,2)}
                                           />
                                         
                                       </ToolContent>
@@ -118,45 +118,11 @@ export default function Chat() {
           </div>
         ))}
         
-        {/* {status === 'streaming' && (
-          <div className="flex items-center gap-2 text-gray-500">
-            <span className="animate-pulse">●●●</span>
-            <span>Thinking...</span>
-          </div>
-        )} */}
+      
       </div>
-
-      <form
-        onSubmit={e => {
-          e.preventDefault();
-          if (input.trim()) {
-              sendMessage({
-                parts: [{ type: 'text', text: input }],
-              });
-            setInput('');
-          }
-        }}
-        className="flex gap-2"
-      >
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          disabled={status !== 'ready'}
-          placeholder="Ask me anything..."
-          className="flex-1 px-4 py-2 border rounded-lg"
-        />
-        <button 
-          type="submit" 
-          disabled={status !== 'ready'}
-          className="px-6 py-2 bg-blue-500 text-white rounded-lg"
-        >
-          Send
-        </button>
-      </form>
+      <PromptDesign input={input} onSubmit={sendMessage} setInput={setInput} chatStatus={status}/>
+     
     </div>
   );
 }
 
-function addToolOutput(arg0: { tool: string; toolCallId: string; output: string; }) {
-  throw new Error('Function not implemented.');
-}
